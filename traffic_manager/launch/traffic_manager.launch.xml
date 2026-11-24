@@ -1,0 +1,6 @@
+<!-- Loads parameters from config/traffic_manager.yaml (edit query_horizon_m there). -->
+<launch>
+  <node pkg="traffic_manager" exec="traffic_manager_node" name="traffic_manager" output="screen">
+    <param from="$(find-pkg-share traffic_manager)/config/traffic_manager.yaml"/>
+  </node>
+</launch>

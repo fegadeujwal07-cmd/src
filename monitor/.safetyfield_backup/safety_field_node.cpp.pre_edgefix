@@ -1,0 +1,404 @@
+// =============================================================================
+// File: monitor/src/safety_field_node.cpp
+// =============================================================================
+// OBJECTIVE
+//   A circular safety field per AMR, centred on the robot's MEASURED position
+//   and following it as it moves. When two fields overlap, both are drawn red
+//   instead of teal and the conflicting AMR ids are published.
+//
+// INPUTS
+//   /fleet_states            (rmf_fleet_msgs/FleetState) — real robot positions
+// OUTPUTS
+//   /safety_field_markers    (visualization_msgs/MarkerArray) — the circles
+//   /safety_field_conflict   (monitor/SafetyFieldConflict)    — who overlaps
+//
+// WHY THIS LIVES IN monitor
+//   The field must be centred on where the robot actually IS. Only two places
+//   in the system carry that: execution (which publishes /fleet_states) and the
+//   packages that consume it. It cannot live in RMF core — the schedule node
+//   subscribes only to itinerary and negotiation topics and never receives a
+//   robot position, which is why the circles RViz draws today sit at the
+//   PLANNED position. Measured on 2026-08: "Robot [amr1] is very far
+//   [15.0m] from where it is supposed to be" — a safety field 15 m from the
+//   robot is worse than none.
+//
+//   zone_manager has the positions but is the decision layer (it chooses who
+//   pauses). Detecting a geometric overlap is an observation, not a decision,
+//   so it belongs beside the other observers. monitor already subscribes to
+//   /fleet_states and already publishes MarkerArray for /zone_markers.
+//
+// WHY NOT rmf_traffic::DetectConflict
+//   It was tried first and it CANNOT answer this question. DetectConflict is a
+//   swept test: it asks "do these two bodies collide while moving along their
+//   trajectories". A safety field asks "are these two circles overlapping right
+//   now", which is a different question, and RMF deliberately answers no to it.
+//
+//   DetectConflict.cpp:934 routes an already-close pair to detect_approach(),
+//   and the comment at DetectConflict.cpp:606 states the rule outright: two
+//   trajectories that START inside each other's vicinity are not a conflict, so
+//   that robots get "an opportunity to back away from each other". Only getting
+//   CLOSER counts, and closeness is measured with a continuous FCL collision
+//   along the supplied motion. Feeding it a stationary here-and-now trajectory
+//   therefore returns nullopt every single time.
+//
+//   Measured 2026-09-07 with the DetectConflict version of this node: 2614
+//   frames over 261 s, amr1 and amr2 closed to 1.4875 m with a 3.00 m trigger
+//   (an overlap depth of 1.51 m — each robot's centre inside the other's
+//   field), 525 consecutive frames overlapping over 52 s. Zero turned red and
+//   zero messages were published. log2 shows the schedule reporting
+//   "conflicts":[] across the same window, for the same reason.
+//
+//   The primitive actually wanted is rmf_traffic's own check_overlap(), which
+//   close_start() runs and which correctly returned true here. It is not
+//   reachable: it is a file-static function, ShapeInternal.hpp (holding
+//   FinalConvexShape::Implementation::get_collision) is not installed, and
+//   rmf_traffic links a patched in-source FCL it does not export. So the test
+//   lives here. For two circles it is arithmetically identical to what FCL
+//   computes; the only thing given up is non-circular fields.
+//
+// THIS NODE IS REPORT-ONLY
+//   It publishes markers and ids. It does NOT pause anything. Pausing would
+//   mean a second publisher on /zone_conflicts alongside zone_manager, and the
+//   robots treat pause as an on/off latch rather than a counter (observed
+//   2026-08-22: amr2 received two startPause and one stopPause, and resumed).
+//   Two independent pausers on a latch is unsafe until a shared hold-count
+//   exists, so that step is deliberately left out.
+// =============================================================================
+
+#include <rclcpp/rclcpp.hpp>
+
+#include <rmf_fleet_msgs/msg/fleet_state.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <monitor/msg/safety_field_conflict.hpp>
+
+#include <chrono>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace monitor {
+
+class SafetyFieldNode : public rclcpp::Node
+{
+public:
+  SafetyFieldNode()
+  : Node("safety_field_node")
+  {
+    // Radius of the teal safety circle, metres. Defaults to RMF's vicinity
+    // radius so the field matches what RViz already draws for each robot.
+    radius_ = declare_parameter<double>("safety_field_radius", 1.5);
+
+    // Release radius. The overlap test returns a hard yes/no, so a single radius
+    // makes the circles flash and the topic chatter while two robots sit at the
+    // boundary. Clearing is tested with a LARGER field, so the robots must
+    // separate a little further before the conflict is dropped.
+    release_radius_ =
+      declare_parameter<double>("safety_field_release_radius", 1.75);
+    if (release_radius_ < radius_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "safety_field_release_radius (%.2f) is below safety_field_radius "
+        "(%.2f); raising it to the trigger radius. Without hysteresis the "
+        "conflict will chatter at the boundary.",
+        release_radius_, radius_);
+      release_radius_ = radius_;
+    }
+
+    frame_id_ = declare_parameter<std::string>("marker_frame_id", "map");
+    level_ = declare_parameter<std::string>("level_name", "L1");
+    const double rate = declare_parameter<double>("evaluate_rate_hz", 10.0);
+    const std::string fleet_topic =
+      declare_parameter<std::string>("fleet_states_topic", "/fleet_states");
+
+    fleet_sub_ = create_subscription<rmf_fleet_msgs::msg::FleetState>(
+      fleet_topic, rclcpp::SensorDataQoS(),
+      [this](rmf_fleet_msgs::msg::FleetState::SharedPtr msg)
+      {
+        on_fleet_state(std::move(msg));
+      });
+
+    // TRANSIENT_LOCAL. A VOLATILE publisher is incompatible with a subscriber
+    // that asks for TRANSIENT_LOCAL, and RViz displays commonly do: observed
+    // 2026-09-07, "New subscription discovered on topic
+    // '/safety_field_markers', requesting incompatible QoS. No messages will be
+    // sent to it. Last incompatible policy: DURABILITY_QOS_POLICY" — RViz got
+    // nothing while ros2 topic echo (volatile by default) saw every frame. A
+    // transient-local publisher satisfies BOTH kinds of subscriber, and hands a
+    // late-joining RViz the current circles immediately instead of after the
+    // next tick.
+    markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+      "/safety_field_markers", rclcpp::QoS(10).transient_local());
+    conflict_pub_ = create_publisher<monitor::msg::SafetyFieldConflict>(
+      "/safety_field_conflict", rclcpp::QoS(10));
+
+    timer_ = create_wall_timer(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double>(1.0 / (rate > 0.0 ? rate : 10.0))),
+      [this]() { evaluate(); });
+
+    RCLCPP_INFO(
+      get_logger(),
+      "Safety fields: radius %.2f m (release %.2f m), evaluated at %.1f Hz "
+      "from %s. Markers on /safety_field_markers, conflicts on "
+      "/safety_field_conflict. Report-only: this node does not pause robots.",
+      radius_, release_radius_, rate, fleet_topic.c_str());
+  }
+
+private:
+  struct RobotPose
+  {
+    double x{0.0};
+    double y{0.0};
+    double yaw{0.0};
+    rclcpp::Time stamp;
+  };
+
+  void on_fleet_state(rmf_fleet_msgs::msg::FleetState::SharedPtr msg)
+  {
+    if (!msg) {
+      return;
+    }
+    for (const auto & robot : msg->robots) {
+      if (robot.name.empty()) {
+        continue;
+      }
+      // Ignore robots reported on another level; their fields cannot overlap
+      // ours in any meaningful sense.
+      if (!robot.location.level_name.empty() &&
+        robot.location.level_name != level_)
+      {
+        continue;
+      }
+      RobotPose p;
+      p.x = robot.location.x;
+      p.y = robot.location.y;
+      p.yaw = robot.location.yaw;
+      p.stamp = now();
+      poses_[robot.name] = p;
+    }
+  }
+
+  // Both fields share one radius, so they overlap when the centres are closer
+  // than twice it. Compared squared to keep a square root out of the inner loop
+  // of an all-pairs sweep. See the header note for why this is not delegated to
+  // rmf_traffic.
+  static bool fields_overlap(
+    const RobotPose & a, const RobotPose & b, double radius)
+  {
+    const double dx = a.x - b.x;
+    const double dy = a.y - b.y;
+    const double reach = 2.0 * radius;
+    return (dx * dx + dy * dy) < (reach * reach);
+  }
+
+  void evaluate()
+  {
+    // A robot that has stopped reporting must not keep a stale field sitting on
+    // the map; drop it rather than testing a position that may be minutes old.
+    drop_stale_poses();
+
+    std::vector<std::string> names;
+    names.reserve(poses_.size());
+    for (const auto & [name, pose] : poses_) {
+      (void)pose;
+      names.push_back(name);
+    }
+
+    std::vector<std::string> pair_a;
+    std::vector<std::string> pair_b;
+    std::set<std::string> conflicting;
+
+    for (std::size_t i = 0; i < names.size(); ++i) {
+      for (std::size_t j = i + 1; j < names.size(); ++j) {
+        const auto & a = poses_.at(names[i]);
+        const auto & b = poses_.at(names[j]);
+
+        const bool was_conflicting =
+          previous_pairs_.count(pair_key(names[i], names[j])) > 0;
+
+        // Hysteresis: a pair that is already in conflict is tested against the
+        // LARGER release field, so it stays in conflict until the robots have
+        // separated past the trigger distance rather than flipping the moment
+        // they touch it.
+        const bool overlap = was_conflicting ?
+          fields_overlap(a, b, release_radius_) :
+          fields_overlap(a, b, radius_);
+
+        if (overlap) {
+          pair_a.push_back(names[i]);
+          pair_b.push_back(names[j]);
+          conflicting.insert(names[i]);
+          conflicting.insert(names[j]);
+        }
+      }
+    }
+
+    publish_markers(conflicting);
+    publish_conflict(conflicting, pair_a, pair_b);
+
+    previous_pairs_.clear();
+    for (std::size_t k = 0; k < pair_a.size(); ++k) {
+      previous_pairs_.insert(pair_key(pair_a[k], pair_b[k]));
+    }
+  }
+
+  void drop_stale_poses()
+  {
+    const auto cutoff = now() - rclcpp::Duration::from_seconds(stale_after_sec_);
+    for (auto it = poses_.begin(); it != poses_.end(); ) {
+      if (it->second.stamp < cutoff) {
+        RCLCPP_INFO(
+          get_logger(),
+          "Dropping safety field for %s: no /fleet_states update for %.0fs",
+          it->first.c_str(), stale_after_sec_);
+        it = poses_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  static std::string pair_key(const std::string & a, const std::string & b)
+  {
+    return (a < b) ? (a + "|" + b) : (b + "|" + a);
+  }
+
+  // A marker id must belong to the ROBOT, not to its position in the map. The
+  // ids used to be handed out by a counter walking poses_, so erasing a stale
+  // robot renumbered every robot after it: the survivor's circle jumped to a
+  // different id while the vacated id kept drawing at the dead robot's last
+  // position until its lifetime ran out. Assigned once here and never reused.
+  int marker_id_for(const std::string & name)
+  {
+    const auto it = marker_ids_.find(name);
+    if (it != marker_ids_.end()) {
+      return it->second;
+    }
+    const int id = next_marker_id_++;
+    marker_ids_.emplace(name, id);
+    return id;
+  }
+
+  void publish_markers(const std::set<std::string> & conflicting)
+  {
+    visualization_msgs::msg::MarkerArray array;
+    std::set<int> live_ids;
+    for (const auto & [name, pose] : poses_) {
+      visualization_msgs::msg::Marker m;
+      m.header.frame_id = frame_id_;
+      m.header.stamp = now();
+      m.ns = "safety_field";
+      m.id = marker_id_for(name);
+      live_ids.insert(m.id);
+      m.type = visualization_msgs::msg::Marker::CYLINDER;
+      m.action = visualization_msgs::msg::Marker::ADD;
+      m.pose.position.x = pose.x;
+      m.pose.position.y = pose.y;
+      m.pose.position.z = 0.0;
+      m.pose.orientation.w = 1.0;
+      // Diameter, so the drawn circle is the field the test actually uses.
+      m.scale.x = 2.0 * radius_;
+      m.scale.y = 2.0 * radius_;
+      m.scale.z = 0.05;
+
+      const bool in_conflict = conflicting.count(name) > 0;
+      m.color.r = in_conflict ? 1.0f : 0.5f;
+      m.color.g = in_conflict ? 0.0f : 1.0f;
+      m.color.b = in_conflict ? 0.0f : 0.9f;
+      m.color.a = 0.5f;
+
+      // Republished every tick from the cached pose, so this only has to
+      // outlive one evaluation period. It is the backstop for the node dying
+      // outright: the circles then fade instead of freezing on the map.
+      m.lifetime = rclcpp::Duration::from_seconds(1.0);
+      array.markers.push_back(m);
+    }
+
+    // An empty MarkerArray is a no-op in RViz — it does not remove anything —
+    // so a robot that goes stale has to be retired by name. Without this its
+    // circle would sit at the last known position for a further lifetime.
+    for (const int gone : published_ids_) {
+      if (live_ids.count(gone) > 0) {
+        continue;
+      }
+      visualization_msgs::msg::Marker m;
+      m.header.frame_id = frame_id_;
+      m.header.stamp = now();
+      m.ns = "safety_field";
+      m.id = gone;
+      m.action = visualization_msgs::msg::Marker::DELETE;
+      array.markers.push_back(m);
+    }
+
+    if (!array.markers.empty()) {
+      markers_pub_->publish(array);
+    }
+    published_ids_ = std::move(live_ids);
+  }
+
+  void publish_conflict(
+    const std::set<std::string> & conflicting,
+    const std::vector<std::string> & pair_a,
+    const std::vector<std::string> & pair_b)
+  {
+    // Publish while any overlap exists, and once more on the falling edge so a
+    // consumer sees the clear without polling. Staying silent otherwise keeps
+    // the topic readable.
+    const bool any = !conflicting.empty();
+    if (!any && !had_conflict_) {
+      return;
+    }
+
+    monitor::msg::SafetyFieldConflict msg;
+    msg.stamp = now();
+    msg.robot_ids.assign(conflicting.begin(), conflicting.end());
+    msg.pair_a = pair_a;
+    msg.pair_b = pair_b;
+    conflict_pub_->publish(msg);
+
+    if (any != had_conflict_) {
+      if (any) {
+        std::string pairs;
+        for (std::size_t k = 0; k < pair_a.size(); ++k) {
+          pairs += (k ? ", " : "") + pair_a[k] + "<->" + pair_b[k];
+        }
+        RCLCPP_WARN(
+          get_logger(),
+          "Safety field conflict: %s (radius %.2f m)", pairs.c_str(), radius_);
+      } else {
+        RCLCPP_INFO(get_logger(), "Safety field conflict cleared");
+      }
+    }
+    had_conflict_ = any;
+  }
+
+  double radius_{1.5};
+  double release_radius_{1.75};
+  double stale_after_sec_{3.0};
+  std::string frame_id_{"map"};
+  std::string level_{"L1"};
+  bool had_conflict_{false};
+
+  std::map<std::string, RobotPose> poses_;
+  std::set<std::string> previous_pairs_;
+
+  std::map<std::string, int> marker_ids_;
+  std::set<int> published_ids_;
+  int next_marker_id_{0};
+
+  rclcpp::Subscription<rmf_fleet_msgs::msg::FleetState>::SharedPtr fleet_sub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr markers_pub_;
+  rclcpp::Publisher<monitor::msg::SafetyFieldConflict>::SharedPtr conflict_pub_;
+  rclcpp::TimerBase::SharedPtr timer_;
+};
+
+}  // namespace monitor
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<monitor::SafetyFieldNode>());
+  rclcpp::shutdown();
+  return 0;
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/open-rmf/rmf_ros2/main/rmf_fleet_adapter/schemas/task_description__drop.json",
+  "title": "Drop Task Description",
+  "description": "Description of a drop-only task. The robot is expected to already be loaded (load_status=4); it drives to the requested place and releases its payload via the chosen ingestor handler. Eligibility (load_status=4 AND robot idle) is enforced separately by the API server pre-validation and the fleet adapter's bid filter.",
+  "type": "object",
+  "properties": {
+    "place": {
+      "description": "The waypoint where the loaded robot should drop its payload.",
+      "$ref": "place.json"
+    },
+    "handler": {
+      "description": "Optional ingestor handler / source_guid that will be referenced in the IngestorRequest emitted by the task. Defaults to 'ingestor1' if omitted; the fleet driver publishes the matching IngestorResult once load_status transitions 4 -> 2.",
+      "type": "string"
+    }
+  },
+  "required": ["place"]
+}

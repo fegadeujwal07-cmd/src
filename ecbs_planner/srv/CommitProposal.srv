@@ -1,0 +1,32 @@
+# TM → ECBS: notify commit/reject of a MovementProposal (idempotent).
+# ECBS syncs commitment view; never self-marks committed authority.
+
+uint64 proposal_id
+uint64 decision_id
+uint64 grant_id
+string amr_id
+string fleet_name
+# Must equal MovementProposal.task_id (canonical). Do not reconstruct from session alone.
+string task_id
+string execution_order_id
+string action_id
+int32 phase_index
+uint32 path_revision
+
+# COMMITTED | REJECTED | STALE | SUPERSEDED
+string status
+string reason
+
+RouteOccurrence from_occurrence
+RouteOccurrence to_occurrence
+int32 release_through_index
+
+uint64 route_version
+uint64 occupancy_version
+uint64 commitment_version
+---
+bool success
+string message
+# ACCEPTED | REJECTED_STALE | REJECTED_MISMATCH | DUPLICATE
+string result
+uint64 commitment_version

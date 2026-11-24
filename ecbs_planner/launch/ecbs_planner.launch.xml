@@ -1,0 +1,31 @@
+<launch>
+  <!--
+    ECBS sits ABOVE /robot_path_requests (proven path untouched).
+    Input : /ecbs_path_candidates  (from GoToPlace after greedy plan)
+    Output: /to_zone_manager       (full path + wait points + amr_id + task_id)
+    base_horizon (separate) will later publish /robot_path_requests.
+  -->
+  <arg name="candidate_topic" default="/ecbs_path_candidates" />
+  <arg name="itinerary_set_topic" default="/rmf_traffic/itinerary_set" />
+  <arg name="to_zone_manager_topic" default="/to_zone_manager" />
+  <arg name="replan_topic" default="/ecbs_replan_candidate" />
+  <arg name="safety_margin_sec" default="2.0" />
+  <arg name="max_wait_sec" default="30.0" />
+  <arg name="max_iters" default="20" />
+  <arg name="position_epsilon_m" default="0.35" />
+
+  <node
+    pkg="ecbs_planner"
+    exec="ecbs_planner_node"
+    name="ecbs_planner"
+    output="screen">
+    <param name="candidate_topic" value="$(var candidate_topic)" />
+    <param name="itinerary_set_topic" value="$(var itinerary_set_topic)" />
+    <param name="to_zone_manager_topic" value="$(var to_zone_manager_topic)" />
+    <param name="replan_topic" value="$(var replan_topic)" />
+    <param name="safety_margin_sec" value="$(var safety_margin_sec)" />
+    <param name="max_wait_sec" value="$(var max_wait_sec)" />
+    <param name="max_iters" value="$(var max_iters)" />
+    <param name="position_epsilon_m" value="$(var position_epsilon_m)" />
+  </node>
+</launch>

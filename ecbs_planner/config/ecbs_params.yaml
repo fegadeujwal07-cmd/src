@@ -1,0 +1,134 @@
+# ECBS evaluate-path tunables (evaluate_path_server / EcbsGate).
+# Distances in metres unless noted. Reload by restarting the node after edits.
+evaluate_path_server:
+  ros__parameters:
+
+    # --- Distances ---
+    # Stretch kept reserved behind a moving robot after it has passed a cell.
+    # Footprint (clearance_m) is applied separately around each cell — do not
+    # bake clearance into this value. Align with safety_distance_m so the rear
+    # frees about when the front is 2.5 m past a conflict.
+    base_tail_m: 2.0
+
+    # Step 1: wait this far before the conflict / standing blocker.
+    # Also: how far past a conflict the front AMR must be before others may
+    # take the freed rear (was tail+clearance ≈ 4–5 m; now 2.5 m).
+    # If bodies would not dash at the wait, it stays here.
+    safety_distance_m: 2.0
+
+    # Centre-to-centre touch distance (robot width + margin). Path points closer
+    # than this conflict; reserved cells are expanded by this footprint for
+    # detecting the conflict — not for pushing the wait further than safety_m.
+    clearance_m: 0.05
+
+    # Step 2: physical AMR body (L×W). After placing at safety_distance_m, if
+    # bodies would still dash the blocker (half-diag = hypot(L/2,W/2)), the wait
+    # is stepped further back until clear. If no dash, wait remains at 2.5 m.
+    amr_length_m: 0.05
+    amr_width_m: 0.05
+
+    # Evaluate also checks clashes up to query_horizon_m + this margin.
+    evaluate_lookahead_margin_m: 5.0
+
+    # XY same-cell match when graph index is missing.
+    position_epsilon_m: 0.35
+
+    # --- Time / solver ---
+    # Extra time (s) after a blocker clears a cell before the waiter may enter.
+    # Also added into the wait ETA when comparing wait vs replan detour
+    # (unless replan_blocked_margin_sec >= 0 overrides it).
+    safety_margin_sec: 15.0
+    # Cap on cumulative wait (s) for one resolve pass.
+    max_wait_sec: 120.0
+    # Max wait-resolve loop iterations.
+    max_iters: 20
+
+    # --- Replan (head-on /ecbs_replan_candidate) ---
+    # Parked (idle) AMR is "on the path" if within this many metres of a path
+    # segment (not clearance_m — that cell epsilon is often ~0.05).
+    parked_block_radius_m: 1.0
+    # Other AMR's goal on the path (same segment rule as parked).
+    goal_block_radius_m: 1.0
+    # Max parked/goal REPLAN rounds per candidate per task before fallback to
+    # the first RMF path (rev 0).
+    replan_max_iterations: 5
+    # Base half-width (s) of the keeper occupancy window per waypoint.
+    # <0 → use safety_margin_sec so wait ETA matches the solver clear margin.
+    replan_blocked_margin_sec: -1.0
+    # Extra margin = growth * seconds_until_waypoint (robots drift).
+    replan_blocked_margin_growth: 0.1
+    # Open this much path (m) at the shared stretch end nearest the keeper.
+    # Compare to safety_distance_m / base_tail_m (2.0): values above that can
+    # let the candidate into the keeper's reserved rear envelope (warn once).
+    replan_blocked_tail_ignore_m: 2.5
+    # Alternatives tried inside ECBS before NO_ALTERNATIVE + CLEAR.
+    replan_max_retries: 5
+    replan_timeout_sec: 20.0
+    replan_reopen_guard_sec: 10.0
+    replan_default_speed_mps: 0.5
+    replan_period_sec: 1.0
+    replan_enabled: true
+    replan_topic: "/ecbs_replan_candidate"
+
+    # --- Idle / topics ---
+    # No evaluate for this long → treat robot as idle/standing obstacle.
+    idle_after_sec: 10.0
+    # Parked-keeper for REPLAN: not moving + position stable + no ECBS path
+    # for this long → idle even with a ghost fleet task_id after cancel.
+    idle_hold_sec: 3.0
+    idle_pos_tol_m: 0.15
+    fleet_state_topic: "/fleet_states"
+    # Full nav-graph (not filtered /nav_graphs1). Loaded once into a hashed
+    # junction cache. Degree 3 = T, ≥4 = cross (+). Hard rule: WAIT points
+    # always safety_distance_m before a T/+ centre (never after / on centre).
+    # Base clip: a junction deep inside the requested base gets the full base
+    # (no wait). Only a junction within safety_distance_m of the base end
+    # (before or after it) cuts the base to safety_distance_m before its
+    # centre — WAIT labeled "T" or "+" — released once the AMR is within
+    # junction_release_m of that stop with no real conflict.
+    # Empty yaml → try share/execution/config/nav_graphs/0.yaml; else /building_map.
+    nav_graph_yaml: ""
+    nav_graph_level: "L1"
+    junction_release_m: 8.0
+    building_map_topic: "/building_map"
+    service_name: "/evaluate_path_service"
+    from_zone_manager_topic: "/from_zone_manager"
+    to_zone_manager_topic: "/to_zone_manager"
+
+    # --- GlobalResolver: ECBS is the single traffic authority ---
+    # Every conflict of a route is decided at the RMF handover, over the FULL
+    # remaining routes (not query_horizon_m). Decisions are
+    # sticky; waiters are released from /fleet_states progress once the
+    # first robot is safety_distance_m past the overlap.
+    # Uses clearance_m (conflict distance) and safety_distance_m from above.
+    global_resolver_enabled: true
+    # Evaluate the moment RMF hands the waypoints over (GoToPlace → EcbsGate
+    # → /from_zone_manager, before ExecutePlan::make): store the route and
+    # decide all its conflicts immediately. TM's PathIntent for the same
+    # task/phase/revision then only BINDS to it (decisions kept, waypoint
+    # numbering remapped). false → decide on TM PathIntent registration.
+    register_on_rmf_handover: true
+    # Strict: conflicts are detected/resolved ONLY on the RMF handover. A TM
+    # PathIntent that arrives first is parked (robot holds, WAIT) and binds
+    # when its handover arrives. TM queries never trigger resolution.
+    decide_only_on_rmf_handover: true
+    # Fallback if no handover arrives (gate disabled / identity mismatch):
+    # decide on the PathIntent after this long, with a WARN.
+    handover_wait_timeout_sec: 2.0
+    # Free pass: a robot that clears the overlap before the other even reaches
+    # its wait point goes first (distance ratio margin). 0 disables.
+    resolver_free_pass_ratio: 1.5
+    # Overlap shorter than this on both routes = crossing (else opposite /
+    # same-direction by travel direction).
+    resolver_crossing_max_len_m: 3.0
+    # Occupancy kept behind a robot pose (body rear), metres.
+    resolver_body_back_m: 0.5
+    # ECBS → TM wake-up (waiter released / decision changed).
+    release_event_topic: "/ecbs/release_event"
+    # Unresolvable conflicts (no deadlock-free order by waiting).
+    replan_candidate_topic: "/ecbs_replan_candidate"
+    # Resolver mode: also run the head-on / parked / goal-on-path replan check
+    # (ReplanCoordinator, replan_* above) on every RMF handover. The seeded
+    # path is approved on /ecbs_path_approval only once no REPLAN is pending.
+    # false → only the resolver's unresolvable-conflict report is published.
+    resolver_replan_enabled: true

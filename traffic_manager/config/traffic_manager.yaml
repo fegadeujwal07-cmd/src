@@ -1,0 +1,65 @@
+# Traffic manager + ECBS path gate (loaded by traffic_manager_node).
+# Change values here only — no code edits required. Restart the node or full stack after edits.
+#
+# query_horizon_m: base length ECBS checks per evaluate call, measured from the robot
+#   pose (e.g. 20.0 → next 20 m of waypoints). Release never goes past this base.
+# PathIntent Location.index: set it to the nav-graph vertex index when known;
+#   0 is treated as "unknown" and ECBS then matches that waypoint by x/y.
+
+traffic_manager:
+  ros__parameters:
+    path_intent_topic: "/traffic_manager/path_intent"
+    path_release_topic: "/traffic_manager/path_release"
+    # RViz path_release_markers (clears behind leg_cursor as robot progresses):
+    #   yellow = PathRequest Location.release=true  (through release_through_index)
+    #   blue   = PathRequest Location.release=false (unreleased tail)
+    #   red    = traffic hold / WAIT gate waypoint
+    publish_path_release_markers: true
+    path_release_marker_topic: "/traffic_manager/path_release_markers"
+    marker_frame_id: "map"
+    use_level_name_as_marker_frame: false
+    marker_republish_hz: 2.0
+    # Re-run evaluate when /to_zone_manager shows ECBS wait deps (after ZM register).
+    # Held robots are re-evaluated on events only (peer FREE, GO progress,
+    # newBaseRequest, /to_zone_manager) — rulebook T8. 0 = timer disabled.
+    to_zone_manager_topic: "/to_zone_manager"
+    held_reevaluate_sec: 2.0
+    # ECBS stores the given base under the request task_id and compares it with
+    # the task_id full_control caches (RMF booking id). Keep false unless
+    # PathIntent.task_id is exactly that booking id; empty always matches.
+    send_task_id_to_ecbs: false
+    # GlobalResolver wakes waiters via ecbs_release_event_topic; /to_zone_manager
+    # is visualization only.
+    reevaluate_on_to_zone: false
+    fleet_state_topic: "/fleet_states"
+    # Client for ecbs_planner evaluate_path_server (mode=evaluate).
+    evaluate_path_service: "/evaluate_path_service"
+    base_extension_query_service: "/base_extension_query"
+    commit_proposal_service: "/commit_proposal"
+    grant_event_topic: "/traffic_manager/grant_event"
+    clearance_event_topic: "/traffic_manager/clearance_event"
+
+    # Max *new* base length per award (metres along PathIntent from the current
+    # committed tip, or from pose on the first award). PathRelease never opens
+    # more than this per FREE_PROPOSAL; awarded through_index never shrinks.
+    # Cumulative base can exceed this as the robot rolls forward and requests
+    # the next slice. Restart traffic_manager after changing this value.
+    query_horizon_m: 10.0
+    # Base extension is driven solely by the robot's newBaseRequest on
+    # /BaseRequests: on receipt, traffic_manager immediately re-evaluates and
+    # publishes the next PathRelease. No travelled-distance gate is applied.
+    # reevaluate_travel_m is unused while use_new_base_request_trigger is true
+    # (kept only if you flip that flag off for legacy distance-based rolling).
+    use_new_base_request_trigger: true
+    base_extension_request_topic: "/BaseRequests"
+    # Delay first ECBS evaluate so /from_zone_manager can populate ScheduleCache.
+    # PathIntent seed → (response) → first query; no extra settle needed.
+    initial_ecbs_defer_ms: 0.0
+
+    # --- ECBS authority (GlobalResolver) ---
+    # true: TM executes ECBS decisions only — no TM-side peer-base veto.
+    ecbs_authoritative: true
+    # ECBS → TM: blocker cleared / decision changed → re-query that robot now.
+    ecbs_release_event_topic: "/ecbs/release_event"
+    # Minimum spacing between STALE_ROUTE recovery transactions per robot.
+    recovery_min_interval_sec: 1.0

@@ -1,0 +1,9 @@
+<library path="librmf_visualization_navgraphs">
+  <class name="rmf_visualization_navgraphs/NavGraph"
+         type="rmf_visualization_navgraphs::NavGraph"
+         base_class_type="rviz_common::Display">
+    <description>
+      Visualize RMF navigation graphs in RViz
+    </description>
+  </class>
+</library>

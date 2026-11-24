@@ -1,0 +1,69 @@
+# Zone Manager ↔ ECBS path register + horizon evaluate.
+# Legacy /to_zone_manager topic is unchanged.
+
+# Request
+string amr_id
+string fleet_name
+string task_id
+int32 phase_index
+int32 path_revision
+
+# "register" = AFTER evaluate WAIT: ZM go/wait decision → ScheduleCache.
+#              ONLY form (minimum data) — waiters in updates[]; no waypoints.
+#              FREE evaluate → do NOT register.
+# "evaluate" = no solve; erase behind pose; FREE/WAIT for allotted BASE
+#              (query_horizon_m, typically 20 m from pose). Clashes are checked
+#              up to query_horizon_m + 5 m (evaluate_lookahead_margin_m); later
+#              ones are ignored until a later evaluate:
+#              - no conflict → FREE; FREE records this base as "given" to the AMR
+#              - conflict fully inside the base already given → FREE (owner priority)
+#              - any other conflict (no base given yet, or spills past it) → WAIT;
+#                wait_point =
+#                * first waypoint of the next base (one past the given base
+#                  end), if the overlap starts inside the given base and
+#                  continues past it
+#                * else the waypoint safety_distance_m before the overlap,
+#                  never behind the robot and never past the base end
+string mode
+
+# evaluate only: geometry (no wait_sec / waiting_for). Unused on register.
+EvaluatePathWaypoint[] waypoints
+
+# register ONLY (ZM contract). Exact form:
+#   mode: "register"
+#   fleet_name: "amr_fleet"
+#   updates:
+#     - amr_id / task_id / phase_index / path_revision
+#       waiting_for: [{amr_id, wait_point{x,y,index,wait_sec}, clear_points[]}]
+# Only WAITING AMRs. Paths must already be in ScheduleCache.
+# GO AMRs omitted — ECBS clears stale waits on blockers named in waiting_for.
+RegisterUpdate[] updates
+
+# evaluate: look-ahead length in metres (default 20 if <= 0)
+float64 query_horizon_m
+# evaluate: robot pose — also used to erase previous path behind pose from cache
+float64 current_x
+float64 current_y
+---
+# Response: lean FREE or WAIT (or BLOCKED on hard fail)
+bool success
+string message
+string amr_id
+string task_id
+int32 path_revision
+string status
+
+# FREE  → metres of clear look-ahead (typically 20.0); no register needed
+# WAIT  → length of FULL conflict corridor (may extend past query horizon);
+#         ZM must decide then call mode=register with updates[]
+float64 horizon_m
+
+# WAIT only: FULL conflict segment (not clipped to look-ahead)
+int64 dep_from_index
+int64 dep_to_index
+
+# WAIT only: each blocker has its own safe wait_point. Empty on FREE.
+WaitDependency[] waiting_for
+
+# WAIT classification for TM (ownership|opposite|plus|t_junction|…); empty on FREE.
+string wait_reason

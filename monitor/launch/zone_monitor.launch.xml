@@ -1,0 +1,142 @@
+<launch>
+  <!--
+    Zone monitor: subscribes to /Monitored_task_details + /fleet_states,
+    publishes /robot_zone_status, filtered /nav_graphs1, and /zone_markers.
+  -->
+  <arg
+    name="source_yaml_path"
+    default="$(find-pkg-share execution)/config/nav_graphs/0.yaml"
+    description="Absolute path to the navigation graph YAML (zones + waypoints)" />
+  <arg
+    name="eta_params_path"
+    default="$(find-pkg-share execution)/config/eta_robot_params.yaml"
+    description="Speeds used to turn the remaining path into eta_update" />
+  <arg
+    name="level"
+    default="L1"
+    description="Building level name for zone tracking" />
+  <arg
+    name="fleet_states_topic"
+    default="/fleet_states"
+    description="FleetState topic for robot pose updates" />
+  <arg
+    name="monitored_task_topic"
+    default="/Monitored_task_details"
+    description="Raw task details topic to subscribe (from execution)" />
+  <arg
+    name="zone_status_topic"
+    default="/robot_zone_status"
+    description="Optional zone-only side topic" />
+  <arg
+    name="publish_robot_zone_status"
+    default="true"
+    description="If true, also publish zone-only messages on zone_status_topic" />
+  <arg
+    name="publish_idle_robot_zones"
+    default="true"
+    description="If true, publish current_zone on zone_status_topic for idle robots (no task)" />
+  <arg
+    name="publish_rate_hz"
+    default="1.0"
+    description="Rate (Hz) for flushing changed zone updates (unchanged robots skipped)" />
+  <arg
+    name="publish_nav_graphs1"
+    default="true"
+    description="If true, publish filtered Graph on nav_graphs1_topic from shared map cache" />
+  <arg
+    name="nav_graphs1_topic"
+    default="/nav_graphs1"
+    description="Filtered nav graph topic (current + next-3 zones)" />
+  <arg
+    name="graph_name"
+    default="amr_fleet"
+    description="Name field on published rmf_building_map_msgs/Graph" />
+  <arg
+    name="publish_zone_markers"
+    default="true"
+    description="If true, publish MarkerArray for zone waypoints/lanes/labels (no borders)" />
+  <arg
+    name="zone_markers_topic"
+    default="/zone_markers"
+    description="RViz MarkerArray topic" />
+  <arg
+    name="marker_frame_id"
+    default="map"
+    description="TF frame for zone markers" />
+  <arg
+    name="publish_zone_catalog"
+    default="true"
+    description="Publish zone IDs from shared nav graph for zone_manager (no YAML reload)" />
+  <arg
+    name="zone_catalog_topic"
+    default="/zone_catalog"
+    description="Latched zone ID catalog topic for zone_manager" />
+
+  <log message="Starting zone_monitor_node (shared nav graph → zones + catalog + /nav_graphs1 + /zone_markers)" />
+
+  <node
+    pkg="monitor"
+    exec="zone_monitor_node"
+    name="zone_monitor"
+    output="screen"
+    args="--ros-args --log-level zone_monitor:=info">
+    <param name="source_yaml_path" value="$(var source_yaml_path)" />
+    <param name="eta_params_path" value="$(var eta_params_path)" />
+    <param name="level" value="$(var level)" />
+    <param name="fleet_states_topic" value="$(var fleet_states_topic)" />
+    <param name="monitored_task_topic" value="$(var monitored_task_topic)" />
+    <param name="zone_status_topic" value="$(var zone_status_topic)" />
+    <param name="publish_robot_zone_status" value="$(var publish_robot_zone_status)" />
+    <param name="publish_idle_robot_zones" value="$(var publish_idle_robot_zones)" />
+    <param name="publish_rate_hz" value="$(var publish_rate_hz)" />
+    <param name="publish_nav_graphs1" value="$(var publish_nav_graphs1)" />
+    <param name="nav_graphs1_topic" value="$(var nav_graphs1_topic)" />
+    <param name="graph_name" value="$(var graph_name)" />
+    <param name="publish_zone_markers" value="$(var publish_zone_markers)" />
+    <param name="zone_markers_topic" value="$(var zone_markers_topic)" />
+    <param name="marker_frame_id" value="$(var marker_frame_id)" />
+    <param name="publish_zone_catalog" value="$(var publish_zone_catalog)" />
+    <param name="zone_catalog_topic" value="$(var zone_catalog_topic)" />
+  </node>
+
+  <!-- Path deviation monitor node -->
+  <arg
+    name="enable_path_deviation_check"
+    default="true"
+    description="If true, monitor AMRs for cross-track path deviation" />
+  <arg
+    name="path_deviation_debounce_ticks"
+    default="3"
+    description="Number of consecutive ticks required to confirm deviation or recovery" />
+  <arg
+    name="path_deviation_topic"
+    default="/path_deviation"
+    description="Topic to publish path deviation and recovery alerts" />
+  <arg
+    name="task_state_topic"
+    default="/rmf_task_state_updates"
+    description="Topic for task state lifecycle updates" />
+  <arg
+    name="path_deviation_rate_hz"
+    default="10.0"
+    description="Evaluation rate (Hz) for path deviation checks" />
+
+  <log message="Starting path_deviation node (multi-segment cross-track error + debounce + recovery)" />
+
+  <node
+    pkg="monitor"
+    exec="path_deviation"
+    name="path_deviation"
+    output="screen"
+    args="--ros-args --log-level path_deviation:=info">
+    <param name="enable_path_deviation_check" value="$(var enable_path_deviation_check)" />
+    <!-- Note: path_deviation_tolerance_m is defined directly in path_deviation.cpp (single source of truth) -->
+    <param name="path_deviation_debounce_ticks" value="$(var path_deviation_debounce_ticks)" />
+    <param name="path_deviation_topic" value="$(var path_deviation_topic)" />
+    <param name="fleet_states_topic" value="$(var fleet_states_topic)" />
+    <param name="monitored_task_topic" value="$(var monitored_task_topic)" />
+    <param name="task_state_topic" value="$(var task_state_topic)" />
+    <param name="level" value="$(var level)" />
+    <param name="check_rate_hz" value="$(var path_deviation_rate_hz)" />
+  </node>
+</launch>

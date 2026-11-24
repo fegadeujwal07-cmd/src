@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>ecbs_planner</name>
+  <version>0.1.0</version>
+  <description>
+    Wait-only ECBS conflict check and movement-proposal arbitration for the
+    FMS: persistent conflict records and groups, BaseExtensionQuery /
+    CommitProposal handover to the traffic manager, EvaluatePath wait
+    registration, and timed paths with wait points on /to_zone_manager.
+    Waiting is decided by exit space, priority and fairness (not FIFO).
+  </description>
+  <maintainer email="todo@todo.todo">fms</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>rmf_fleet_msgs</depend>
+  <depend>rmf_traffic_msgs</depend>
+  <depend>rmf_building_map_msgs</depend>
+  <depend>ament_index_cpp</depend>
+  <depend>yaml-cpp</depend>
+  <depend>monitor</depend>
+
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,0 +1,33 @@
+<launch>
+  <!--
+    OPTIONAL standalone /nav_graphs1 publisher.
+
+    Prefer zone_monitor.launch.xml: it loads 0.yaml once and publishes both
+    /robot_zone_status and /nav_graphs1 from the same in-memory cache.
+
+    Use this launch only if you need /nav_graphs1 without zone_monitor
+    (it will load the YAML again in a separate process).
+  -->
+  <arg
+    name="source_yaml_path"
+    default="$(find-pkg-share execution)/config/nav_graphs/0.yaml"
+    description="Nav graph YAML with vertices, lanes, zones" />
+  <arg name="level" default="L1" />
+  <arg name="graph_name" default="amr_fleet" />
+  <arg name="robot_zone_status_topic" default="/robot_zone_status" />
+  <arg name="nav_graphs1_topic" default="/nav_graphs1" />
+  <arg name="publish_rate_hz" default="1.0" />
+
+  <node
+    pkg="monitor"
+    exec="nav_graphs1_zone_publisher_node"
+    name="nav_graphs1_zone_publisher"
+    output="screen">
+    <param name="source_yaml_path" value="$(var source_yaml_path)" />
+    <param name="level" value="$(var level)" />
+    <param name="graph_name" value="$(var graph_name)" />
+    <param name="robot_zone_status_topic" value="$(var robot_zone_status_topic)" />
+    <param name="nav_graphs1_topic" value="$(var nav_graphs1_topic)" />
+    <param name="publish_rate_hz" value="$(var publish_rate_hz)" />
+  </node>
+</launch>

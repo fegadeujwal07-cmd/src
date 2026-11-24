@@ -1,0 +1,15 @@
+<launch>
+  <!-- Standalone EvaluatePath service (mock zone_manager ↔ ECBS). -->
+  <arg name="service_name" default="/evaluate_path_service" />
+  <arg name="params_file"
+    default="$(find-pkg-share ecbs_planner)/config/ecbs_params.yaml" />
+
+  <node
+    pkg="ecbs_planner"
+    exec="evaluate_path_server"
+    name="evaluate_path_server"
+    output="screen">
+    <param from="$(var params_file)" />
+    <param name="service_name" value="$(var service_name)" />
+  </node>
+</launch>

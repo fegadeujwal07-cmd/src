@@ -1,0 +1,26 @@
+<?xml version='1.0' ?>
+
+<launch>
+  <arg name="use_sim_time" default="false" description="Use the /clock topic for time to sync with simulation"/>
+  <arg name="nav_graph_path" description="Path to the navigation graph YAML file (e.g., 0.yaml)"/>
+  <arg name="match_tolerance" default="0.5" description="Tolerance (meters) for matching mutex entry/exit coordinates to itinerary waypoints"/>
+  <arg name="claim_distance" default="4.0" description="Distance (meters) from mutex entry to trigger claim logic"/>
+  <arg name="exit_reached_distance" default="0.7" description="Distance (meters) to mutex exit to detect exit reached"/>
+  <arg name="clearance_distance" default="0.9" description="Distance (meters) beyond mutex exit to ensure full clearance before releasing"/>
+  <arg name="output" default="screen"/>
+
+  <node pkg="mutex_supervisor"
+        exec="mutex_supervisor"
+        name="mutex_supervisor"
+        output="$(var output)">
+    
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="nav_graph_path" value="$(var nav_graph_path)"/>
+    <param name="match_tolerance" value="$(var match_tolerance)"/>
+    <param name="claim_distance" value="$(var claim_distance)"/>
+    <param name="exit_reached_distance" value="$(var exit_reached_distance)"/>
+    <param name="clearance_distance" value="$(var clearance_distance)"/>
+  </node>
+
+</launch>
+

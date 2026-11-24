@@ -1,0 +1,22 @@
+<launch>
+  <!--
+    Visualize /to_zone_manager paths in RViz2 (waits published directly):
+      Gray = full path
+      Blue = waiting points + blocker / topology / easiness label
+      Red  = overlapped corridor (clear_points)
+    Also prints dependency details to the terminal.
+  -->
+  <arg name="topic" default="/to_zone_manager" />
+  <arg name="marker_topic" default="/ecbs_conflict_markers" />
+  <arg name="frame_id" default="map" />
+
+  <node
+    pkg="ecbs_planner"
+    exec="to_zone_manager_viz"
+    name="to_zone_manager_viz"
+    output="screen">
+    <param name="topic" value="$(var topic)" />
+    <param name="marker_topic" value="$(var marker_topic)" />
+    <param name="frame_id" value="$(var frame_id)" />
+  </node>
+</launch>

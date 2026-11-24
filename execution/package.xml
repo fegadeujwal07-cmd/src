@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>execution</name>
+  <version>0.1.0</version>
+  <description>Fleet adapter for AMR robots (Execution Node fleet package; MQTT / RMF integration).</description>
+  <maintainer email="your-email@example.com">Your Name</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclpy</depend>
+  <depend>monitor</depend>
+  <depend>zone_manager</depend>
+  <exec_depend>ecbs_planner</exec_depend>
+  <exec_depend>traffic_manager</exec_depend>
+  <depend>rmf_fleet_adapter</depend>
+  <depend>rmf_api_msgs</depend>
+  <depend>rmf_fleet_msgs</depend>
+  <depend>rmf_dispenser_msgs</depend>
+  <depend>rmf_ingestor_msgs</depend>
+  <depend>rmf_task_msgs</depend>
+  <depend>rmf_traffic_msgs</depend>
+  <depend>rmf_traffic_ros2</depend>
+  <depend>rmf_task_ros2</depend>
+  <depend>rmf_utils</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>yaml-cpp</depend>
+  <depend>nav2_msgs</depend>
+  <depend>nav2_common</depend>
+  <depend>std_srvs</depend>
+  <depend>example_interfaces</depend>
+  <!-- System MQTT client library (apt: libmosquitto-dev / libmosquitto1) -->
+  <build_depend>libmosquitto-dev</build_depend>
+  <exec_depend>libmosquitto1</exec_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>launch_xml</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

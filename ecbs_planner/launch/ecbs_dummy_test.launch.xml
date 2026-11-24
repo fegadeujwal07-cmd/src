@@ -1,0 +1,37 @@
+<launch>
+  <!-- ECBS standalone server + dummy path1 publisher + evaluate client.
+       Run conflict publisher in another terminal when ready. -->
+  <arg name="log_dir" default="$(env HOME)/FMS_ECBS/ecbs_test_logs" />
+  <arg name="service_name" default="/evaluate_path_service" />
+  <arg name="from_topic" default="/from_zone_manager" />
+  <arg name="horizon_m" default="20.0" />
+  <arg name="period_sec" default="10.0" />
+
+  <node
+    pkg="ecbs_planner"
+    exec="evaluate_path_server"
+    name="evaluate_path_server"
+    output="screen">
+    <param name="service_name" value="$(var service_name)" />
+    <param name="from_zone_manager_topic" value="$(var from_topic)" />
+    <!-- Head-on corridor waits can exceed default 30s; raise for demo. -->
+    <param name="max_wait_sec" value="120.0" />
+    <param name="safety_margin_sec" value="2.0" />
+    <param name="to_zone_manager_topic" value="/to_zone_manager" />
+  </node>
+
+  <node
+    pkg="ecbs_planner"
+    exec="dummy_path_publisher.py"
+    name="dummy_path_publisher"
+    output="screen"
+    args="--topic $(var from_topic) --log-dir $(var log_dir) --amr-id amr1 --task-id task_A --revision 1"/>
+    <!-- Publishes once only after evaluate_path_server subscribes. -->
+
+  <node
+    pkg="ecbs_planner"
+    exec="dummy_evaluate_client.py"
+    name="dummy_evaluate_client"
+    output="screen"
+    args="--service $(var service_name) --log-dir $(var log_dir) --amr-id amr1 --task-id task_A --revision 1 --horizon-m $(var horizon_m) --period $(var period_sec) --path-dir east"/>
+</launch>

@@ -1,0 +1,20 @@
+# Requirements for WCS to RMF Mission API
+# Install with: pip3 install -r requirements.txt
+
+# Web framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# HTTP client for API server communication
+httpx>=0.24.0
+
+# Data validation
+pydantic>=2.0.0
+
+# ROS 2 dependencies (install via ROS 2 setup)
+# rclpy
+# rmf-fleet-msgs
+
+
+
+

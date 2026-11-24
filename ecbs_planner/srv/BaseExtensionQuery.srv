@@ -1,0 +1,46 @@
+# TM → ECBS: request movement proposal without re-shipping full route geometry.
+# Route must already be seeded via /from_zone_manager.
+
+uint64 request_id
+string amr_id
+string fleet_name
+# Canonical route/task identity (prefer dispatch / planner UUID).
+string task_id
+# Robot execution order id (PathRequest.task_id); separate from route identity.
+string execution_order_id
+int32 phase_index
+uint32 path_revision
+string route_hash
+
+# Current TM grant tip and observed progress.
+int32 current_grant_through_index
+RouteOccurrence current_grant_end
+RouteOccurrence observed_progress
+float64 current_x
+float64 current_y
+
+# Desired extension distance with explicit origin.
+float64 desired_extension_m
+# POSE | GRANT_TIP | ROUTE_OCCURRENCE
+string distance_origin
+
+uint64 route_version
+uint64 occupancy_version
+uint64 commitment_version
+uint64 priority_version
+---
+bool success
+string message
+# FREE_PROPOSAL | WAIT | STALE_ROUTE | RECOVERY_REQUIRED | AUTHORITY_CONFLICT
+string status
+
+MovementProposal proposal
+WaitDependency[] waiting_for
+string wait_reason
+ConflictRecord[] relevant_conflicts
+AuthorityConflict authority_conflict
+
+uint64 route_version
+uint64 occupancy_version
+uint64 commitment_version
+uint64 priority_version

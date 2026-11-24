@@ -1,0 +1,15 @@
+# Patrol task list for patrol_pairs.py — one patrol task per line, sent in order.
+#
+#   A, B                 pair -> patrol A -> B (dispatcher picks the robot)
+#   amr2: A, B           send this one directly to amr2
+#   A, B, C rounds=2     more places / more rounds also work
+#
+# Place names must exist in the nav graph (y1..y6, P1..P20, z3..z17, K1..K5,
+# Inbound, Outbound, A1..A6, Z1, Z2, ...).
+
+Inbound, z11
+Inbound, P16
+Inbound, P14
+Inbound, P7
+Inbound, amr4_charger
+Inbound, P8

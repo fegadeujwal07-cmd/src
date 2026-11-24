@@ -1,0 +1,26 @@
+/**:
+  ros__parameters:
+    # Path to navigation graph YAML file (required)
+    # Example: /path/to/install/execution/share/execution/config/nav_graphs/0.yaml
+    nav_graph_path: ""
+
+    # Tolerance (meters) for matching mutex entry/exit coordinates to itinerary waypoints
+    # Default: 0.5m
+    match_tolerance: 0.5
+
+    # Distance (meters) from mutex entry to trigger claim logic
+    # When robot is within this distance of mutex entry, it attempts to claim the mutex
+    # Default: 4.0m
+    claim_distance: 4.0
+
+    # Distance (meters) to mutex exit to detect exit reached
+    # When robot is within this distance of mutex exit, exit_reached flag is set
+    # Default: 0.7m
+    exit_reached_distance: 0.7
+
+    # Distance (meters) beyond mutex exit to ensure full clearance before releasing
+    # When robot has moved this distance beyond exit, mutex is released
+    # Should be roughly half robot length + safety margin
+    # Default: 0.9m
+    clearance_distance: 0.9
+

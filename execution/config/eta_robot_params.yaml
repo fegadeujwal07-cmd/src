@@ -1,0 +1,50 @@
+# =============================================================================
+# ETA robot parameters (separate from config.yaml)
+#
+# simple_controller move_speed stays 2.0 — that is max cmd_vel, not ETA speed.
+# Calibrated to stopwatch on free amr5 leg (~30.45 m → ~41 s, avg ~0.75 m/s):
+#   operating 0.8 m/s + accel 0.15 / decel 0.8 ≈ 41 s straight-line.
+#   (2.0 m/s ETA was ~18 s low; 0.5 m/s defaults were ~21 s high.)
+#
+# Authority for ETA / itinerary timing:
+#   - operating_linear_speed_mps = straight hops
+#   - curve_motion.curve_linear_speed_mps = auto-detected curve hops
+#   - config.yaml keeps core fleet/RMF identity
+# =============================================================================
+
+eta_robot:
+  operating_linear_speed_mps: 0.8
+  linear_accel_mps2: 0.15
+  linear_decel_mps2: 0.8
+  angular_speed_max_rps: 0.5
+  angular_accel_rps2: 0.3
+
+  curve_motion:
+    # Matches simple_controller curve_speed / final_approach ~0.45–0.5.
+    curve_linear_speed_mps: 0.5
+    curve_radius_threshold_m: 5.0
+    # Per-hop path heading change. Not live robot IMU, not 90/180 corners.
+    #   < heading_min_deg              → straight
+    #   heading_min_deg .. heading_max_deg → curve candidate
+    #   > heading_max_deg              → corner / U-turn (spin + 90→20s / 180→40s)
+    # A run of candidates whose total bend > heading_change_threshold_deg
+    # is a curve from first hop to last hop; those hops use curve speed.
+    heading_min_deg: 3.0
+    heading_max_deg: 25.0
+    heading_change_threshold_deg: 20.0
+
+  curve_approach:
+    approach_start_distance_m: 3.0
+    curve_entry_distance_m: 0.5
+    required_curve_speed_mps: 0.40
+
+  stop_decel_table:
+    - {speed_mps: 0.5, distance_m: 3.0}
+    - {speed_mps: 1.0, distance_m: 4.0}
+   # - {speed_mps: 1.5, distance_m: 5.0}
+   # - {speed_mps: 2.0, distance_m: 7.0}
+
+  robot_dimensions:
+    length_m: 1.403
+    width_m: 1.194
+    height_m: 1.153
